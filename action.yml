@@ -20,19 +20,24 @@ runs:
   using: "composite"
   steps:
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v7
       with:
         go-version: "1.23.x"
         cache: false
 
     - name: Validate Archseal policy
       shell: bash
+      env:
+        ARCHSEAL_CONFIG: ${{ inputs.config }}
       run: |
         cd "$GITHUB_ACTION_PATH"
-        go run ./cmd/archseal doctor --config "$GITHUB_WORKSPACE/$INPUT_CONFIG"
+        go run ./cmd/archseal doctor           --config "$GITHUB_WORKSPACE/$ARCHSEAL_CONFIG"
 
     - name: Enforce architecture contract
       shell: bash
+      env:
+        ARCHSEAL_CONFIG: ${{ inputs.config }}
+        ARCHSEAL_FORMAT: ${{ inputs.format }}
       run: |
         cd "$GITHUB_ACTION_PATH"
-        go run ./cmd/archseal check --config "$GITHUB_WORKSPACE/$INPUT_CONFIG" --format "$INPUT_FORMAT"
+        go run ./cmd/archseal check           --config "$GITHUB_WORKSPACE/$ARCHSEAL_CONFIG"           --format "$ARCHSEAL_FORMAT"
