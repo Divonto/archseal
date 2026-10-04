@@ -21,9 +21,9 @@ jobs:
         go: ["1.23.x", "stable"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
 
@@ -52,7 +52,7 @@ jobs:
     name: action / self-hosted contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Execute repository action
         uses: ./
@@ -64,14 +64,33 @@ jobs:
     name: fuzz / import-parser
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "stable"
 
       - name: Fuzz import parser
         run: go test ./internal/archseal -run='^$' -fuzz=FuzzExtractImportsNeverPanics -fuzztime=5s
+
+  reproducible-build:
+    name: build / reproducibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "stable"
+
+      - name: Build twice and compare
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go build -trimpath -o /tmp/archseal-a ./cmd/archseal
+          go build -trimpath -o /tmp/archseal-b ./cmd/archseal
+          cmp /tmp/archseal-a /tmp/archseal-b
+          sha256sum /tmp/archseal-a
 
   cross-build:
     name: build / ${{ matrix.goos }}-${{ matrix.goarch }}
@@ -94,9 +113,9 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "stable"
 
