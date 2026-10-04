@@ -9,7 +9,7 @@ import (
 	"github.com/Divonto/archseal/internal/archseal"
 )
 
-const version = "0.1.0"
+const version = "1.0.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -20,6 +20,8 @@ func main() {
 	switch os.Args[1] {
 	case "check":
 		runCheck(os.Args[2:])
+	case "doctor":
+		runDoctor(os.Args[2:])
 	case "init":
 		runInit()
 	case "version", "--version", "-v":
@@ -35,7 +37,7 @@ func main() {
 
 func runCheck(args []string) {
 	configPath := ".archseal.json"
-	jsonOutput := false
+	format := "text"
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -45,8 +47,14 @@ func runCheck(args []string) {
 			}
 			i++
 			configPath = args[i]
+		case "--format":
+			if i+1 >= len(args) {
+				fatal("--format requires text, json, or sarif")
+			}
+			i++
+			format = args[i]
 		case "--json":
-			jsonOutput = true
+			format = "json"
 		default:
 			fatal("unknown flag: " + args[i])
 		}
@@ -57,19 +65,42 @@ func runCheck(args []string) {
 		fatal(err.Error())
 	}
 
-	if jsonOutput {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(report); err != nil {
-			fatal(err.Error())
-		}
-	} else {
+	switch format {
+	case "text":
 		fmt.Print(report.Text())
+	case "json":
+		writeJSON(report)
+	case "sarif":
+		writeJSON(report.SARIF())
+	default:
+		fatal("unsupported format: " + format)
 	}
 
-	if len(report.Violations) > 0 {
+	if report.Failed() {
 		os.Exit(1)
 	}
+}
+
+func runDoctor(args []string) {
+	configPath := ".archseal.json"
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--config":
+			if i+1 >= len(args) {
+				fatal("--config requires a path")
+			}
+			i++
+			configPath = args[i]
+		default:
+			fatal("unknown flag: " + args[i])
+		}
+	}
+
+	report, err := archseal.Doctor(configPath)
+	if err != nil {
+		fatal(err.Error())
+	}
+	fmt.Print(report.Text())
 }
 
 func runInit() {
@@ -89,17 +120,29 @@ func runInit() {
 	fmt.Println("created", abs)
 }
 
+func writeJSON(value any) {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(value); err != nil {
+		fatal(err.Error())
+	}
+}
+
 func usage() {
-	fmt.Print(`archseal — deterministic architecture boundary checks
+	fmt.Print(`archseal — deterministic architecture contracts
 
 Usage:
   archseal init
-  archseal check [--config path] [--json]
+  archseal doctor [--config path]
+  archseal check [--config path] [--format text|json|sarif]
   archseal version
+
+Compatibility:
+  archseal check --json
 
 Exit codes:
   0  architecture is sealed
-  1  boundary violations found
+  1  boundary violations or dependency cycles found
   2  usage or configuration error
 `)
 }
