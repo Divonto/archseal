@@ -1,0 +1,38 @@
+name: "Archseal"
+description: "Enforce deterministic architecture contracts in CI"
+author: "Yassine EL Bouzidi"
+
+branding:
+  icon: "shield"
+  color: "gray-dark"
+
+inputs:
+  config:
+    description: "Path to the Archseal policy, relative to the repository root"
+    required: false
+    default: ".archseal.json"
+  format:
+    description: "Output format: text, json, or sarif"
+    required: false
+    default: "text"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: "1.23.x"
+        cache: false
+
+    - name: Validate Archseal policy
+      shell: bash
+      run: |
+        cd "$GITHUB_ACTION_PATH"
+        go run ./cmd/archseal doctor --config "$GITHUB_WORKSPACE/$INPUT_CONFIG"
+
+    - name: Enforce architecture contract
+      shell: bash
+      run: |
+        cd "$GITHUB_ACTION_PATH"
+        go run ./cmd/archseal check --config "$GITHUB_WORKSPACE/$INPUT_CONFIG" --format "$INPUT_FORMAT"
