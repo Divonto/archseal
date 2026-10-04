@@ -1,10 +1,14 @@
 # Archseal
 
+[![CI](https://github.com/Divonto/archseal/actions/workflows/ci.yml/badge.svg)](https://github.com/Divonto/archseal/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-black.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.23%2B-black.svg)](go.mod)
+
 **Architecture is a contract. Seal it in CI.**
 
-Archseal v1 is a deterministic architecture verifier for JavaScript and TypeScript codebases.
+Archseal is a deterministic architecture verifier for JavaScript and TypeScript codebases.
 
-One Go binary. Zero third-party runtime dependencies. No daemon. No cloud. No AI. No execution of analyzed project code.
+It converts architectural intent into an executable CI invariant: forbidden dependency edges fail, cycles fail, malformed policy fails closed, and every analyzed architecture state receives a reproducible SHA-256 seal.
 
 ```text
 ARCHSEAL v1
@@ -18,27 +22,56 @@ Seal:          sha256:6e4f...
 SEALED  Architecture contract holds.
 ```
 
-## Why Archseal exists
+## The contract
 
-Architecture diagrams do not stop code from crossing boundaries. Archseal converts those boundaries into executable policy and fails CI when the dependency graph violates the contract.
+Archseal v1 guarantees a deliberately small surface:
 
-The v1 contract is deliberately narrow:
+- deterministic layer-boundary enforcement
+- project-relative and configured alias resolution
+- dependency-cycle detection with strongly connected components
+- strict JSON policy parsing and unambiguous layer ownership
+- stable text, JSON, and SARIF 2.1.0 output
+- content-addressed SHA-256 architecture seals
+- no analyzed-code execution and no verifier network access
+- zero third-party Go runtime dependencies
 
-- enforce forbidden layer-to-layer dependencies
-- resolve relative imports and configured path aliases
-- detect dependency cycles with deterministic SCC analysis
-- reject ambiguous or overlapping layer definitions
-- emit stable text, JSON, and SARIF 2.1.0 output
-- generate a reproducible SHA-256 seal over policy plus analyzed source
-- validate policy and filesystem assumptions with `archseal doctor`
+The design is intentionally narrower than a general linter. Archseal owns one question:
 
-## Install
+> **Does this repository still obey its declared architecture?**
+
+## Use it as a GitHub Action
+
+```yaml
+name: architecture
+
+on: [push, pull_request]
+
+jobs:
+  archseal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Divonto/archseal@v1
+```
+
+Custom policy path or machine output:
+
+```yaml
+- uses: Divonto/archseal@v1
+  with:
+    config: config/architecture.json
+    format: sarif
+```
+
+The action validates the policy with `doctor` before enforcing it.
+
+## Install the CLI
 
 ```bash
 go install github.com/Divonto/archseal/cmd/archseal@latest
 ```
 
-Or run directly from the repository:
+Or run from source:
 
 ```bash
 go run ./cmd/archseal check
@@ -52,7 +85,7 @@ archseal doctor
 archseal check
 ```
 
-A policy looks like this:
+Example policy:
 
 ```json
 {
@@ -91,7 +124,7 @@ Given:
 import { db } from "@infra/db";
 ```
 
-and a rule that denies `domain -> infrastructure`, Archseal returns exit code `1`:
+and a policy denying `domain -> infrastructure`:
 
 ```text
 DENY  src/domain/order.ts:1
@@ -100,27 +133,17 @@ DENY  src/domain/order.ts:1
 OPEN  Architecture contract failed.
 ```
 
-This works for:
-
-```ts
-import x from "../infrastructure/x";
-export { x } from "../infrastructure/x";
-const x = require("../infrastructure/x");
-const x = await import("../infrastructure/x");
-import { x } from "@infra/x";
-```
-
-Supported source extensions:
+Archseal recognizes static imports, exports, `require()`, dynamic `import()`, and configured aliases across:
 
 ```text
 .ts  .tsx  .js  .jsx  .mjs  .cjs
 ```
 
-Package imports that do not match a configured alias remain outside the v1 dependency graph.
+Bare package imports that do not match an explicit Archseal alias remain outside the v1 dependency graph.
 
 ## Cycle detection
 
-With `"forbid_cycles": true`, Archseal detects strongly connected components in the project dependency graph.
+With `"forbid_cycles": true`, dependency cycles are contract failures:
 
 ```text
 CYCLE src/core/a.ts -> src/core/b.ts
@@ -128,25 +151,21 @@ CYCLE src/core/a.ts -> src/core/b.ts
 OPEN  Architecture contract failed.
 ```
 
-Cycle output is stable and sorted so CI logs do not change randomly between runs.
+Cycle detection uses deterministic strongly connected component analysis. Findings are sorted before output.
 
 ## Architecture seal
 
-Every successful or failed check includes a content-addressed seal:
+Every check produces:
 
 ```text
 sha256:<64 hex characters>
 ```
 
-The seal is computed from:
+The seal covers canonical policy JSON, sorted analyzed paths, and exact source bytes.
 
-1. the canonical Archseal policy
-2. sorted analyzed file paths
-3. exact analyzed source bytes
+It deliberately excludes timestamps, hostnames, environment variables, random values, filesystem mtimes, and network state.
 
-No timestamp, hostname, random value, or network state is included. The same architecture state produces the same seal.
-
-This makes the result suitable for build evidence, audit logs, and reproducibility checks.
+That makes the seal useful as build evidence: identical architecture state produces an identical seal.
 
 ## Doctor
 
@@ -154,16 +173,7 @@ This makes the result suitable for build evidence, audit logs, and reproducibili
 archseal doctor
 ```
 
-Doctor fails closed when the policy cannot be trusted. It verifies:
-
-- schema validity
-- non-overlapping layers
-- valid rule references
-- repository-local aliases
-- readable roots
-- readable layer directories
-
-Example:
+Doctor validates the verifier's trust assumptions before a check:
 
 ```text
 ARCHSEAL DOCTOR
@@ -178,7 +188,9 @@ OK  4 layer(s) resolve to readable directories
 READY  Policy is production-valid.
 ```
 
-## Machine output
+Invalid policy is an error, not a warning.
+
+## Machine contracts
 
 JSON:
 
@@ -192,35 +204,14 @@ SARIF 2.1.0:
 archseal check --format sarif > archseal.sarif
 ```
 
-The SARIF contract exposes:
+Stable SARIF rule IDs:
 
-- `ARCH001` — forbidden architecture dependency
-- `ARCH002` — dependency cycle
-
-This makes Archseal compatible with tooling that consumes standard static-analysis results.
-
-## CI
-
-A minimal GitHub Actions gate:
-
-```yaml
-name: architecture
-
-on: [push, pull_request]
-
-jobs:
-  archseal:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.23.x"
-      - run: go run github.com/Divonto/archseal/cmd/archseal@latest doctor
-      - run: go run github.com/Divonto/archseal/cmd/archseal@latest check
+```text
+ARCH001  forbidden architecture dependency
+ARCH002  dependency cycle
 ```
 
-## CLI
+## CLI contract
 
 ```text
 archseal init
@@ -229,7 +220,7 @@ archseal check [--config path] [--format text|json|sarif]
 archseal version
 ```
 
-`archseal check --json` remains available as a compatibility alias.
+`archseal check --json` is kept as a compatibility alias.
 
 Exit codes:
 
@@ -239,43 +230,48 @@ Exit codes:
 2  usage, policy, or configuration error
 ```
 
+## Engineering guarantees
+
+The repository itself is verified as a product artifact, not only compiled once:
+
+- tests run on Go 1.23 and current stable Go
+- import parsing receives a fuzzing gate in CI
+- binaries cross-compile for Linux, macOS, and Windows on amd64 and arm64
+- release tags produce archives plus SHA-256 checksums
+- GitHub Actions dependencies are maintained by Dependabot
+- ownership is explicit through CODEOWNERS
+- architecture and trust boundaries are documented separately
+
+See [Architecture](docs/ARCHITECTURE.md), [Threat model](docs/THREAT_MODEL.md), [Security](SECURITY.md), and [Changelog](CHANGELOG.md).
+
 ## Security model
 
-During `check`, Archseal:
+During `check`, Archseal reads source and filesystem metadata, resolves paths, constructs a graph, evaluates policy, and computes a seal.
 
-- reads source files
-- resolves dependency paths
-- computes a deterministic graph and seal
-- performs no network requests
-- does not execute project code
-- does not install packages
-- does not invoke a JavaScript runtime
+It does **not** execute the analyzed application, invoke Node.js, install packages, run project scripts, or contact a network service.
 
-See [SECURITY.md](SECURITY.md).
+## Release model
 
-## Design principles
+A `v*` tag triggers a verification gate, then builds:
 
-**Deterministic.** Same policy and source bytes, same result and same seal.
+```text
+linux/amd64
+linux/arm64
+darwin/amd64
+darwin/arm64
+windows/amd64
+windows/arm64
+```
 
-**Fail closed.** Unknown config fields, invalid aliases, overlapping layers, unreadable roots, and invalid rules are errors.
-
-**Explainable.** Every boundary failure identifies the source file, source layer, target layer, import path, and line.
-
-**Small attack surface.** The verifier uses the Go standard library only.
-
-**CI-first.** Stable ordering, explicit exit codes, JSON, SARIF, and no interactive behavior.
+Release archives are published with a `SHA256SUMS` manifest.
 
 ## Non-goals
 
-Archseal is not a TypeScript compiler, package vulnerability scanner, formatter, general linter, or AI code reviewer.
+Archseal is not a TypeScript compiler, dependency vulnerability scanner, formatter, package resolver, general linter, or AI code reviewer.
 
-Its job is smaller: **make architecture boundaries executable.**
+Its job is smaller and stricter:
 
-## Versioning
-
-v1 defines the stable policy and CLI contract. Breaking changes require a new major version.
-
-See [CHANGELOG.md](CHANGELOG.md).
+**make architecture boundaries executable.**
 
 ## License
 
