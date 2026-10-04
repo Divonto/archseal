@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible Archseal defect
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a reproducible Archseal issue. Do not include secrets or private source code.
+
+  - type: input
+    id: version
+    attributes:
+      label: Archseal version
+      placeholder: "archseal 1.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - CLI
+        - GitHub Action
+        - Policy validation
+        - Import resolution
+        - Cycle detection
+        - JSON output
+        - SARIF output
+        - Release binary
+    validations:
+      required: true
+
+  - type: textarea
+    id: policy
+    attributes:
+      label: Minimal policy
+      description: Paste a reduced .archseal.json with sensitive names removed.
+      render: json
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include the smallest source graph and exact command that reproduces the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
