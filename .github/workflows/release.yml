@@ -1,0 +1,62 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+
+      - name: Verify
+        run: |
+          go test ./...
+          go vet ./...
+          go run ./cmd/archseal doctor
+          go run ./cmd/archseal check
+
+      - name: Build release matrix
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          for target in             linux/amd64             linux/arm64             darwin/amd64             darwin/arm64             windows/amd64             windows/arm64
+          do
+            GOOS="${target%/*}"
+            GOARCH="${target#*/}"
+            name="archseal_${GITHUB_REF_NAME}_${GOOS}_${GOARCH}"
+            binary="archseal"
+
+            if [ "$GOOS" = "windows" ]; then
+              binary="archseal.exe"
+            fi
+
+            mkdir -p "build/$name"
+            GOOS="$GOOS" GOARCH="$GOARCH"               go build -trimpath -ldflags="-s -w"               -o "build/$name/$binary" ./cmd/archseal
+
+            if [ "$GOOS" = "windows" ]; then
+              (cd build && zip -q -r "../dist/$name.zip" "$name")
+            else
+              tar -C build -czf "dist/$name.tar.gz" "$name"
+            fi
+          done
+
+          (cd dist && sha256sum * > SHA256SUMS)
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*             --verify-tag             --generate-notes             --title "Archseal $GITHUB_REF_NAME"
