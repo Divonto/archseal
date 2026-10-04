@@ -10,5 +10,10 @@
       "from": "domain",
       "deny": ["infrastructure"]
     }
-  ]
+  ],
+  "aliases": {
+    "@domain/*": "example/src/domain/*",
+    "@infra/*": "example/src/infrastructure/*"
+  },
+  "forbid_cycles": true
 }
