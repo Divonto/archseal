@@ -48,6 +48,18 @@ jobs:
       - name: Verify SARIF contract
         run: go run ./cmd/archseal check --format sarif > /tmp/archseal.sarif
 
+  action-smoke:
+    name: action / self-hosted contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Execute repository action
+        uses: ./
+        with:
+          config: .archseal.json
+          format: text
+
   fuzz:
     name: fuzz / import-parser
     runs-on: ubuntu-latest
