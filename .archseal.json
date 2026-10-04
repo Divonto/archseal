@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "roots": ["example/src"],
+  "layers": {
+    "domain": ["example/src/domain"],
+    "infrastructure": ["example/src/infrastructure"]
+  },
+  "rules": [
+    {
+      "from": "domain",
+      "deny": ["infrastructure"]
+    }
+  ]
+}
